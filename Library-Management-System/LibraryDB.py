@@ -4,7 +4,7 @@ import pandas as pd
 
 # Database Connection
 def connect_db():
-    conn = sqlite3.connect("LibraryDB.db")  # Change filename if needed
+    conn = sqlite3.connect("LibraryDB.sql")  # Change filename if needed
     return conn
 
 # Function to fetch data
