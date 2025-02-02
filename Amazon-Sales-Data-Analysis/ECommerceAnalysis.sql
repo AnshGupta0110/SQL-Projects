@@ -46,7 +46,8 @@ SELECT
     ASIN,
     Qty,
     Amount,  
-    currency,  
+    currency,
+	COALESCE(promotion_ids, 'Not Provided') AS promotion_ids,
     COALESCE(ship_city, 'Not Provided') AS ship_city,
     COALESCE(ship_state, 'Not Provided') AS ship_state,
     COALESCE(ship_postal_code, 0) AS ship_postal_code,
@@ -57,7 +58,7 @@ FROM AmazonSale
 WHERE Amount IS NOT NULL AND currency IS NOT NULL;  -- Ensuring critical fields are present
 
 -- if have to check view 
-SELECT * FROM Cleaned_AmazonSale
+SELECT * FROM Cleaned_AmazonSale;
 
 
 
@@ -93,7 +94,7 @@ ORDER BY Month
 -- To identify top performing categories, 
 -- Checking status and group by according categories 
 -- order them in descending order by revenue
-SELECT 
+SELECT TOP 5
     Category,
     COUNT(*) AS Total_Orders,
     SUM(Amount) AS Revenue
@@ -105,8 +106,20 @@ ORDER BY Revenue DESC;
 
 
 
+-- Query 4 Less Performing Categories
+SELECT TOP 5
+    Category,
+    COUNT(*) AS Total_Orders,
+    SUM(Amount) AS Revenue
+FROM Cleaned_AmazonSale
+WHERE Status NOT IN ('Cancelled', 'Refunded')
+GROUP BY Category
+ORDER BY Revenue ASC;
 
--- Query 4 - Top 5 Cities by Revenue using CTE's
+
+
+
+-- Query 5 - Top 10 Cities by Revenue using CTE's
 WITH CitySales AS (
     SELECT ship_city, 
 	SUM(Amount) AS Total_Revenue
@@ -114,13 +127,30 @@ WITH CitySales AS (
 	WHERE Status NOT IN ('Cancelled', 'Refunded')
     GROUP BY ship_city
 )
-SELECT TOP 5 * FROM CitySales ORDER BY Total_Revenue DESC;
+SELECT TOP 10 * FROM CitySales ORDER BY Total_Revenue DESC;
 
 
 
 
 
--- Query 5 - Total Orders Cancelled & Cancellation Percentage  
+-- Query 6 - Last 10 Cities by Revenue using CTE's
+
+WITH CitySales AS (
+    SELECT ship_city, 
+	SUM(Amount) AS Total_Revenue
+    FROM AmazonSale
+	WHERE Status NOT IN ('Cancelled', 'Refunded')
+    GROUP BY ship_city
+)
+SELECT TOP 10 * FROM CitySales ORDER BY Total_Revenue ASC;
+
+
+
+
+
+
+
+-- Query 7 - Total Orders Cancelled & Cancellation Percentage  
 SELECT 
     COUNT(*) AS Total_Orders,
     COUNT(CASE WHEN Status = 'Cancelled' THEN 1 END) AS Cancelled_Orders,
@@ -139,35 +169,61 @@ GROUP BY Category;
 
 
 
--- Query 6 Revenue From Orders with Promotions
+-- Query 8 Revenue From Orders with Promotions
 -- For Evaluateing promotion effectiveness.
 SELECT 
     CASE 
-        WHEN promotion_ids IS NOT NULL THEN 'With Promotion' 
+        WHEN promotion_ids != 'Not Provided' THEN 'With Promotion' 
         ELSE 'Without Promotion' 
     END AS Promotion_Status,
     COUNT(Order_ID) AS Order_Count,
     SUM(Amount) AS Total_Revenue
-FROM AmazonSale
+FROM Cleaned_AmazonSale
 WHERE Status NOT IN ('Cancelled', 'Refunded')
 GROUP BY CASE 
-    WHEN promotion_ids IS NOT NULL THEN 'With Promotion' 
+    WHEN promotion_ids != 'Not Provided' THEN 'With Promotion' 
     ELSE 'Without Promotion' 
     END;
 
 
+SELECT * FROM Cleaned_AmazonSale
 
 
 
--- Query 7 - Top 10 Customers by Sales
-SELECT TOP 10 
+
+
+-- Query 9 - Top 10 Customers by Sales
+-- 
+SELECT TOP 10
     Order_ID, 
     SUM(Amount) AS Total_Spending
-FROM AmazonSale
+FROM Cleaned_AmazonSale
 WHERE Status NOT IN ('Cancelled', 'Refunded')
 GROUP BY Order_ID
 ORDER BY Total_Spending DESC;
 
 
 
+
+
+
+-- Query 10 - Tracks repeat purchases and calculates time gaps between consecutive orders from the same shipping address.
+
+WITH Repeat_Purchases AS (
+    SELECT 
+        Order_ID, 
+        ship_city, 
+        ship_postal_code, 
+        Date,
+        LAG(Date) OVER (PARTITION BY ship_city, ship_postal_code ORDER BY Date) AS Previous_Order_Date,
+        LEAD(Date) OVER (PARTITION BY ship_city, ship_postal_code ORDER BY Date) AS Next_Order_Date,
+        DATEDIFF(DAY, LAG(Date) OVER (PARTITION BY ship_city, ship_postal_code ORDER BY Date), Date) AS Days_Since_Last_Order,
+        DATEDIFF(DAY, Date, LEAD(Date) OVER (PARTITION BY ship_city, ship_postal_code ORDER BY Date)) AS Days_Until_Next_Order
+    FROM AmazonSale
+    WHERE ship_city IS NOT NULL AND ship_postal_code IS NOT NULL
+)
+SELECT *
+FROM Repeat_Purchases
+WHERE Days_Since_Last_Order IS NOT NULL
+ORDER BY ship_city, ship_postal_code, Date;
 
